@@ -1,7 +1,11 @@
 ZFTokenField
 ============
 
-iOS custom view that let you add token view inside like NSTokenField
+iOS custom view that let you add token view inside like NSTokenField.
+
+This fork includes updates to fix a few issues with the original repo:
+1. Keeps the placeholder visible whenever the text field is empty
+2. Fixes a sizing issue that pushed text off screen
 
 <p align="center"><img src="https://raw.githubusercontent.com/zoonooz/ZFTokenField/master/Screenshot/ss.png"/></p>
 

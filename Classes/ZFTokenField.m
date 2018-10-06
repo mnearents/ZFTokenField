@@ -14,21 +14,6 @@
 
 @implementation ZFTokenTextField
 
-- (void)setText:(NSString *)text
-{
-    if ([text isEqualToString:@""]) {
-        if (((ZFTokenField *)self.superview).numberOfToken > 0) {
-            text = @"\u200B";
-        }
-    }
-    [super setText:text];
-}
-
-- (NSString *)text
-{
-    return [super.text stringByReplacingOccurrencesOfString:@"\u200B" withString:@""];
-}
-
 - (NSString *)rawText
 {
     return super.text;
@@ -49,8 +34,8 @@
 @interface ZFTokenField () <UITextFieldDelegate>
 @property (nonatomic, strong) ZFTokenTextField *textField;
 @property (nonatomic, strong) NSMutableArray *tokenViews;
-
 @property (nonatomic, strong) NSString *tempTextFieldText;
+
 @end
 
 @implementation ZFTokenField
@@ -64,10 +49,13 @@
     return self;
 }
 
-- (void)awakeFromNib
+- (instancetype)initWithCoder:(NSCoder *)coder
 {
-    [super awakeFromNib];
-    [self setup];
+    self = [super initWithCoder:coder];
+    if (self) {
+        [self setup];
+    }
+    return self;
 }
 
 - (BOOL)focusOnTextField
@@ -87,6 +75,7 @@
     self.textField.borderStyle = UITextBorderStyleNone;
     self.textField.backgroundColor = [UIColor clearColor];
     self.textField.delegate = self;
+    //    self.textField.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
     [self.textField addTarget:self action:@selector(textFieldDidChange:) forControlEvents:UIControlEventEditingChanged];
     
     [self reloadData];
@@ -115,6 +104,9 @@
     [self enumerateItemRectsUsingBlock:^(CGRect itemRect) {
         totalRect = CGRectUnion(itemRect, totalRect);
     }];
+    
+    CGFloat margin = [self.delegate tokenMarginInTokenInField:self];
+    totalRect.size.height += margin * 2;
     return totalRect.size;
 }
 
@@ -122,7 +114,6 @@
 
 - (void)reloadData
 {
-    // clear
     for (UIView *view in self.tokenViews) {
         [view removeFromSuperview];
     }
@@ -140,7 +131,7 @@
     
     [self.tokenViews addObject:self.textField];
     [self addSubview:self.textField];
-    self.textField.frame = (CGRect) {0,0,50,[self.dataSource lineHeightForTokenInField:self]};
+    self.textField.frame = (CGRect) {0,0,0,[self.dataSource lineHeightForTokenInField:self]};
     
     [self invalidateIntrinsicContentSize];
     [self.textField setText:@""];
@@ -166,30 +157,49 @@
     CGFloat lineHeight = [self.dataSource lineHeightForTokenInField:self];
     
     if ([self.delegate respondsToSelector:@selector(tokenMarginInTokenInField:)]) {
-        margin = [self.delegate tokenMarginInTokenInField:self];
+        x = y = margin = [self.delegate tokenMarginInTokenInField:self];
     }
     
+    CGFloat maxWidth = CGRectGetWidth(self.bounds) - 2 * margin; //width of the tokenField
+    
     for (UIView *token in self.tokenViews) {
-        CGFloat width = MAX(CGRectGetWidth(self.bounds), CGRectGetWidth(token.frame));
-        CGFloat tokenWidth = MIN(CGRectGetWidth(self.bounds), CGRectGetWidth(token.frame));
-        if (x > width - tokenWidth) {
+        
+        CGFloat width = MAX(maxWidth, CGRectGetWidth(token.frame)); //max of tokenField width and the textField width
+        
+        
+        CGFloat tokenWidth = MIN(maxWidth, CGRectGetWidth(token.frame)); //min of tokenField width and textField width
+        
+        if (x - margin + tokenWidth > width) {
             y += lineHeight + margin;
-            x = 0;
+            x = margin;
             rowCount = 0;
         }
         
         if ([token isKindOfClass:[ZFTokenTextField class]]) {
             UITextField *textField = (UITextField *)token;
-            CGSize size = [textField sizeThatFits:(CGSize){CGRectGetWidth(self.bounds), lineHeight}];
-            size.height = lineHeight;
-            size.width += 16; // margin right
-            if (size.width > CGRectGetWidth(self.bounds)) {
-                size.width = CGRectGetWidth(self.bounds);
+            
+            UIScrollView /* UIFieldEditor */ *editor = nil;
+            for (UIView *v in textField.subviews) {
+                if ([NSStringFromClass(v.class) isEqualToString:@"UIFieldEditor"]) {
+                    editor = (UIScrollView *)v;
+                }
             }
+            
+            CGSize size = { editor ? editor.contentSize.width : 5, lineHeight};
+            
+            if (size.width > maxWidth) {
+                size.width = maxWidth;
+            }
+            
+            //TODO calculate this dynamically??
+            if (size.width < 50.0) {
+                size.width = 60.0;
+            }
+            
             token.frame = (CGRect){{x, y}, size};
+            
         }
-        
-        block((CGRect){x, y, tokenWidth, token.frame.size.height});
+        block((CGRect){x, y, tokenWidth, lineHeight});
         x += tokenWidth + margin;
         rowCount++;
     }
@@ -216,6 +226,7 @@
 
 - (void)textFieldDidEndEditing:(ZFTokenTextField *)textField
 {
+    
     if ([self.delegate respondsToSelector:@selector(tokenFieldDidEndEditing:)]) {
         [self.delegate tokenFieldDidEndEditing:self];
     }
@@ -223,10 +234,11 @@
 
 - (void)textFieldDidChange:(ZFTokenTextField *)textField
 {
+    
     if ([[textField rawText] isEqualToString:@""]) {
-        textField.text = @"\u200B";
+        textField.text = @"";
         
-        if ([self.tempTextFieldText isEqualToString:@"\u200B"]) {
+        if ([self.tempTextFieldText isEqualToString:@""]) {
             if (self.tokenViews.count > 1) {
                 NSUInteger removeIndex = self.tokenViews.count - 2;
                 [self.tokenViews[removeIndex] removeFromSuperview];
